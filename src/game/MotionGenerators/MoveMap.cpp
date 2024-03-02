@@ -17,8 +17,6 @@
  */
 
 #include "Log.h"
-#include "World/World.h"
-#include "Entities/Creature.h"
 #include "MoveMap.h"
 #include "MoveMapSharedDefines.h"
 
@@ -28,9 +26,6 @@ namespace MMAP
     // our global singleton copy
     MMapManager* g_MMapManager = nullptr;
 
-    // stores list of mapids which do not use pathfinding
-    std::set<uint32>* g_mmapDisabledIds = nullptr;
-
     MMapManager* MMapFactory::createOrGetMMapManager()
     {
         if (g_MMapManager == nullptr)
@@ -39,80 +34,11 @@ namespace MMAP
         return g_MMapManager;
     }
 
-    void MMapFactory::preventPathfindingOnMaps(const char* ignoreMapIds)
-    {
-        if (!g_mmapDisabledIds)
-            g_mmapDisabledIds = new std::set<uint32>();
-
-        uint32 strLenght = strlen(ignoreMapIds) + 1;
-        char* mapList = new char[strLenght];
-        memcpy(mapList, ignoreMapIds, sizeof(char)*strLenght);
-
-        char* idstr = strtok(mapList, ",");
-        while (idstr)
-        {
-            g_mmapDisabledIds->insert(uint32(atoi(idstr)));
-            idstr = strtok(nullptr, ",");
-        }
-
-        delete[] mapList;
-    }
-
-    bool MMapFactory::IsPathfindingEnabled(uint32 mapId, const Unit* unit = nullptr)
-    {
-        if (!sWorld.getConfig(CONFIG_BOOL_MMAP_ENABLED))
-            return false;
-
-        if (unit)
-        {
-            // always use mmaps for players
-            if (unit->GetTypeId() == TYPEID_PLAYER)
-                return true;
-
-            if (IsPathfindingForceDisabled(unit))
-                return false;
-
-            if (IsPathfindingForceEnabled(unit))
-                return true;
-
-            // always use mmaps for pets of players (can still be disabled by extra-flag for pet creature)
-            if (unit->GetTypeId() == TYPEID_UNIT && ((Creature*)unit)->IsPet() && unit->GetOwner() &&
-                    unit->GetOwner()->GetTypeId() == TYPEID_PLAYER)
-                return true;
-        }
-
-        return g_mmapDisabledIds->find(mapId) == g_mmapDisabledIds->end();
-    }
-
     void MMapFactory::clear()
     {
-        delete g_mmapDisabledIds;
         delete g_MMapManager;
 
-        g_mmapDisabledIds = nullptr;
         g_MMapManager = nullptr;
-    }
-
-    bool MMapFactory::IsPathfindingForceEnabled(const Unit* unit)
-    {
-        if (const Creature* pCreature = dynamic_cast<const Creature*>(unit))
-        {
-            if (const CreatureInfo* pInfo = pCreature->GetCreatureInfo())
-            {
-                if (pInfo->ExtraFlags & CREATURE_EXTRA_FLAG_MMAP_FORCE_ENABLE)
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    bool MMapFactory::IsPathfindingForceDisabled(const Unit* unit)
-    {
-        if (const Creature* pCreature = dynamic_cast<const Creature*>(unit))
-            return pCreature->IsIgnoringMMAP();
-
-        return false;
     }
 
     // ######################## MMapManager ########################
@@ -136,8 +62,6 @@ namespace MMAP
         FILE* file = fopen(fileName, "rb");
         if (!file)
         {
-            if (MMapFactory::IsPathfindingEnabled(mapId))
-                sLog.outError("MMAP:loadMapData: Error: Could not open mmap file '%s'", fileName);
             delete[] fileName;
             return false;
         }
